@@ -1,0 +1,5 @@
+<resources>
+    <string name="app_name">CameraX-Sample</string>
+    <string name="flash">Flash</string>
+    <string name="loading">Loading...</string>
+</resources>
