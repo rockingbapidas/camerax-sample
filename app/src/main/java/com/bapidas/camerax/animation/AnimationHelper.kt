@@ -1,4 +1,4 @@
-package com.bapidas.camerax.ui.animation
+package com.bapidas.camerax.animation
 
 import android.animation.Animator
 import android.animation.AnimatorSet

@@ -21,7 +21,7 @@
         android:layout_height="match_parent">
 
         <androidx.camera.view.PreviewView
-            android:id="@+id/camera"
+            android:id="@+id/camera_preview"
             android:layout_width="0dp"
             android:layout_height="0dp"
             android:keepScreenOn="true"
@@ -83,13 +83,12 @@
                 android:orientation="horizontal">
 
                 <ImageView
-                    android:id="@+id/openGallery"
+                    android:id="@+id/flashToggle"
                     android:layout_width="24dp"
                     android:layout_height="24dp"
                     android:layout_marginStart="51dp"
-                    android:onClick="@{(view) -> callback.openGallery()}"
-                    android:src="@drawable/ic_gallery_white_24dp"
-                    android:visibility="@{!viewModel.showGalleryIcon ? View.INVISIBLE : View.VISIBLE}" />
+                    android:onClick="@{(view) -> callback.toggleFlash()}"
+                    android:src="@drawable/ic_flash_off_white_20dp" />
 
                 <ImageView
                     android:id="@+id/capture"
@@ -117,7 +116,7 @@
                 android:layout_height="wrap_content"
                 android:layout_marginBottom="43dp"
                 android:gravity="center"
-                android:text="@{viewModel.toolsTipText}"
+                android:text="@string/hold_for_video_tap_for_photo"
                 android:textColor="@android:color/white"
                 android:textSize="13sp" />
 
