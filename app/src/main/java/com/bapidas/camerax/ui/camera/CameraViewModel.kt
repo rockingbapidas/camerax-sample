@@ -4,10 +4,13 @@ import android.os.Handler
 import android.os.SystemClock
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
+import com.bapidas.camerax.ui.model.MediaData
+import java.io.File
 import java.util.concurrent.TimeUnit
 
 class CameraViewModel : ViewModel() {
     val recorderTimeText = MutableLiveData<String>()
+
     private var startHTime = 0L
     private var customHandler = Handler()
     private var timeInMilliseconds = 0L
@@ -42,5 +45,26 @@ class CameraViewModel : ViewModel() {
         timeInMilliseconds = 0L
         startHTime = SystemClock.uptimeMillis()
         recorderTimeText.value = String.format("%02d", 0).plus(":" + String.format("%02d", 0))
+    }
+
+    internal fun savePhoto(path: String): MediaData {
+        val file = File(path)
+        return MediaData(
+            mediaName = file.name,
+            mediaType = "IMAGE",
+            mediaSize = file.length(),
+            mediaPath = path
+        )
+    }
+
+    internal fun saveVideo(path: String): MediaData {
+        val file = File(path)
+        return MediaData(
+            mediaName = file.name,
+            mediaType = "VIDEO",
+            mediaSize = file.length(),
+            mediaPath = path,
+            mediaDuration = timeInMilliseconds
+        )
     }
 }

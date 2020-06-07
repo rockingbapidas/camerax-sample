@@ -5,8 +5,25 @@ import android.view.WindowManager
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.constraintlayout.widget.ConstraintLayout
+import androidx.fragment.app.FragmentActivity
+
+const val FLAGS_FULLSCREEN =
+    View.SYSTEM_UI_FLAG_LOW_PROFILE or
+            View.SYSTEM_UI_FLAG_FULLSCREEN or
+            View.SYSTEM_UI_FLAG_LAYOUT_STABLE or
+            View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY or
+            View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION or
+            View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
 
 fun AppCompatActivity.showToast(message: String) {
+    Toast.makeText(
+        this,
+        message,
+        Toast.LENGTH_SHORT
+    ).show()
+}
+
+fun FragmentActivity.showToast(message: String) {
     Toast.makeText(
         this,
         message,

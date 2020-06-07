@@ -27,7 +27,7 @@
         </activity>
 
         <activity
-            android:name=".ui.camera.CameraActivity"
+            android:name=".ui.CameraActivity"
             android:exported="false"
             android:filterTouchesWhenObscured="true"
             android:screenOrientation="unspecified" />

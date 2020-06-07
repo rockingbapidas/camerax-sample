@@ -1,34 +1,33 @@
 package com.bapidas.camerax.ui.camera
 
-import android.Manifest
 import android.annotation.SuppressLint
-import android.app.Activity
 import android.content.Context
-import android.content.Intent
-import android.content.pm.PackageManager
 import android.hardware.display.DisplayManager
 import android.net.Uri
 import android.os.Bundle
 import android.os.Handler
 import android.util.DisplayMetrics
 import android.util.Log
-import android.view.*
-import androidx.appcompat.app.AppCompatActivity
+import android.view.LayoutInflater
+import android.view.MotionEvent
+import android.view.View
+import android.view.ViewGroup
 import androidx.camera.core.*
 import androidx.camera.core.impl.VideoCaptureConfig
 import androidx.camera.lifecycle.ProcessCameraProvider
-import androidx.constraintlayout.widget.ConstraintLayout
-import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.databinding.DataBindingUtil
+import androidx.fragment.app.Fragment
 import androidx.lifecycle.ViewModelProvider
-import com.bapidas.camerax.animation.AnimationHelper
-import com.bapidas.camerax.R
-import com.bapidas.camerax.databinding.ActivityCameraCustomBinding
-import kotlinx.android.synthetic.main.activity_camera_custom.*
+import androidx.navigation.Navigation
 import com.bapidas.camerax.BR
-import com.bapidas.camerax.extension.setTranslucentStatusWithTopMargin
+import com.bapidas.camerax.R
+import com.bapidas.camerax.animation.AnimationHelper
+import com.bapidas.camerax.databinding.CameraFragmentBinding
 import com.bapidas.camerax.extension.showToast
+import com.bapidas.camerax.ui.CameraActivity
+import com.bapidas.camerax.ui.permission.PermissionFragment
+import kotlinx.android.synthetic.main.camera_fragment.*
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.*
@@ -37,9 +36,10 @@ import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
 
-class CameraActivity : AppCompatActivity(), CameraNavigator {
+class CameraFragment: Fragment(),
+    CameraNavigator {
     private val mDisplayManager by lazy {
-        getSystemService(Context.DISPLAY_SERVICE) as DisplayManager
+        requireActivity().getSystemService(Context.DISPLAY_SERVICE) as DisplayManager
     }
     private val mViewModel: CameraViewModel by lazy {
         ViewModelProvider(this).get(CameraViewModel::class.java)
@@ -70,74 +70,47 @@ class CameraActivity : AppCompatActivity(), CameraNavigator {
         }
     }
 
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-
-        DataBindingUtil.setContentView<ActivityCameraCustomBinding>(
-            this, R.layout.activity_camera_custom
+    override fun onCreateView(
+        inflater: LayoutInflater,
+        container: ViewGroup?,
+        savedInstanceState: Bundle?
+    ): View? {
+        val binding = DataBindingUtil.inflate<CameraFragmentBinding>(
+            inflater, R.layout.camera_fragment, container, false
         ).apply {
-            setVariable(BR.viewModel, this@CameraActivity.mViewModel)
-            setVariable(BR.callback, this@CameraActivity)
+            setVariable(BR.viewModel, this@CameraFragment.mViewModel)
+            setVariable(BR.callback, this@CameraFragment)
         }.also {
             it.lifecycleOwner = this
         }
+        return binding.root
+    }
 
-        toolbar.apply {
-            setTranslucentStatusWithTopMargin(
-                this,
-                layoutParams as ConstraintLayout.LayoutParams
-            )
-            setNavigationIcon(R.drawable.ic_close_white_24dp)
-            setSupportActionBar(this)
-        }
-
-        supportActionBar?.apply {
-            setDisplayHomeAsUpEnabled(true)
-            title = ""
-        }
-
+    override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
+        super.onViewCreated(view, savedInstanceState)
         addListeners()
-
-        mOutputDirectory = getOutputDirectory()
-        mCameraExecutor = ContextCompat.getMainExecutor(this)
+        mOutputDirectory = CameraActivity.getOutputDirectory(requireContext())
+        mCameraExecutor = ContextCompat.getMainExecutor(requireActivity())
         mDisplayManager.registerDisplayListener(mDisplayListener, null)
+        camera_preview.post {
+            mDisplayId = camera_preview.display.displayId
+            setUpCamera()
+        }
+    }
 
-        if (allPermissionsGranted()) {
-            camera_preview.post {
-                mDisplayId = camera_preview.display.displayId
-                setUpCamera()
-            }
-        } else {
-            ActivityCompat.requestPermissions(
-                this,
-                REQUIRED_PERMISSIONS,
-                REQUEST_CODE_PERMISSIONS
+    override fun onResume() {
+        super.onResume()
+        // Make sure that all permissions are still present, since the
+        // user could have removed them while the app was in paused state.
+        if (!PermissionFragment.hasPermissions(requireContext())) {
+            Navigation.findNavController(requireActivity(), R.id.fragment_container).navigate(
+                CameraFragmentDirections.actionCameraToPermissions()
             )
         }
     }
 
-    override fun onRequestPermissionsResult(
-        requestCode: Int,
-        permissions: Array<String>,
-        grantResults: IntArray
-    ) {
-        if (requestCode == REQUEST_CODE_PERMISSIONS) {
-            if (allPermissionsGranted()) {
-                camera_preview.post {
-                    mDisplayId = camera_preview.display.displayId
-                    setUpCamera()
-                }
-            } else {
-                showToast("Permissions not granted by the user.").also {
-                    finish()
-                }
-            }
-        }
-    }
-
-    override fun onDestroy() {
-        super.onDestroy()
-        // Unregister the listeners
+    override fun onDestroyView() {
+        super.onDestroyView()
         mDisplayManager.unregisterDisplayListener(mDisplayListener)
     }
 
@@ -171,8 +144,82 @@ class CameraActivity : AppCompatActivity(), CameraNavigator {
         bindCameraUseCases()
     }
 
+    private fun addListeners() {
+        var initialTouchX = 0f
+        var initialTouchY = 0f
+        val mHandler = Handler()
+        val mLongPressed = Runnable {
+            capture.performHapticFeedback(capture.id)
+            startVideo()
+        }
+        capture.setOnTouchListener { v, event ->
+            when (event.action) {
+                MotionEvent.ACTION_DOWN -> {
+                    mHandler.postDelayed(
+                        mLongPressed,
+                        DELAY_MILLIS
+                    )
+                    capture.setImageResource(R.drawable.ic_circle_red_white_24dp)
+                    mAnimationHelper.buttonScaleAnimation(
+                        SCALE_UP,
+                        SCALE_UP, v
+                    )
+                    initialTouchX = event.rawX
+                    initialTouchY = event.rawY
+                    return@setOnTouchListener true
+                }
+                MotionEvent.ACTION_UP -> {
+                    mHandler.removeCallbacks(mLongPressed)
+                    mAnimationHelper.buttonScaleAnimation(
+                        SCALE_DOWN,
+                        SCALE_DOWN, v,
+                        onAnimationEnd = {
+                            capture.setImageResource(R.drawable.ic_circle_line_white_24dp)
+                        }
+                    )
+                    val xDiff = initialTouchX - event.rawX
+                    val yDiff = initialTouchY - event.rawY
+                    if ((abs(xDiff) < 5) && (abs(yDiff) < 5)) {
+                        if (isTakingVideo) {
+                            stopVideo()
+                        } else {
+                            takePhoto()
+                        }
+                    } else {
+                        stopVideo()
+                    }
+                    v.performClick()
+                    return@setOnTouchListener true
+                }
+                else -> {
+                    return@setOnTouchListener false
+                }
+            }
+        }
+    }
+
+    private fun hasBackCamera(): Boolean {
+        return mCameraProvider?.hasCamera(CameraSelector.DEFAULT_BACK_CAMERA) ?: false
+    }
+
+    private fun hasFrontCamera(): Boolean {
+        return mCameraProvider?.hasCamera(CameraSelector.DEFAULT_FRONT_CAMERA) ?: false
+    }
+
+    private fun hasFlashMode(): Boolean {
+        return mCamera?.cameraInfo?.hasFlashUnit() ?: false
+    }
+
+    private fun aspectRatio(width: Int, height: Int): Int {
+        val previewRatio = max(width, height).toDouble() / min(width, height)
+        if (abs(previewRatio - RATIO_4_3_VALUE) <= abs(previewRatio - RATIO_16_9_VALUE)) {
+            return AspectRatio.RATIO_4_3
+        }
+        return AspectRatio.RATIO_16_9
+    }
+
     private fun setUpCamera() {
-        val cameraProviderFuture = ProcessCameraProvider.getInstance(this)
+        val cameraProviderFuture = ProcessCameraProvider.getInstance(requireActivity())
         cameraProviderFuture.addListener(Runnable {
             // CameraProvider
             mCameraProvider = cameraProviderFuture.get()
@@ -184,8 +231,14 @@ class CameraActivity : AppCompatActivity(), CameraNavigator {
                 else -> throw IllegalStateException("Back and front camera are unavailable")
             }
 
+            mFlashMode = when {
+                hasFlashMode() -> ImageCapture.FLASH_MODE_OFF
+                else -> NO_FLASH
+            }
+
             // Build and bind the camera use cases
             bindCameraUseCases()
+            buildUi()
         }, mCameraExecutor)
     }
 
@@ -220,7 +273,8 @@ class CameraActivity : AppCompatActivity(), CameraNavigator {
             setCaptureMode(ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY)
             setTargetAspectRatio(screenAspectRatio)
             setTargetRotation(rotation)
-            setFlashMode(mFlashMode)
+            if (mFlashMode != NO_FLASH)
+                setFlashMode(mFlashMode)
         }.build()
 
         //Video Capture
@@ -247,56 +301,11 @@ class CameraActivity : AppCompatActivity(), CameraNavigator {
         }
     }
 
-    private fun addListeners() {
-        var initialTouchX = 0f
-        var initialTouchY = 0f
-        val mHandler = Handler()
-        val mLongPressed = Runnable {
-            capture.performHapticFeedback(capture.id)
-            startVideo()
-        }
-        capture.setOnTouchListener { v, event ->
-            when (event.action) {
-                MotionEvent.ACTION_DOWN -> {
-                    mHandler.postDelayed(mLongPressed,
-                        DELAY_MILLIS
-                    )
-                    capture.setImageResource(R.drawable.ic_circle_red_white_24dp)
-                    mAnimationHelper.buttonScaleAnimation(
-                        SCALE_UP,
-                        SCALE_UP, v)
-                    initialTouchX = event.rawX
-                    initialTouchY = event.rawY
-                    return@setOnTouchListener true
-                }
-                MotionEvent.ACTION_UP -> {
-                    mHandler.removeCallbacks(mLongPressed)
-                    mAnimationHelper.buttonScaleAnimation(
-                        SCALE_DOWN,
-                        SCALE_DOWN, v,
-                        onAnimationEnd = {
-                            capture.setImageResource(R.drawable.ic_circle_line_white_24dp)
-                        }
-                    )
-                    val xDiff = initialTouchX - event.rawX
-                    val yDiff = initialTouchY - event.rawY
-                    if ((kotlin.math.abs(xDiff) < 5) && (kotlin.math.abs(yDiff) < 5)) {
-                        if (isTakingVideo) {
-                            stopVideo()
-                        } else {
-                            takePhoto()
-                        }
-                    } else {
-                        stopVideo()
-                    }
-                    v.performClick()
-                    return@setOnTouchListener true
-                }
-                else -> {
-                    return@setOnTouchListener false
-                }
-            }
-        }
+    private fun buildUi() {
+        if (!hasFlashMode())
+            flashToggle.visibility = View.INVISIBLE
+        if (!hasFrontCamera())
+            rotateCamera.visibility = View.INVISIBLE
     }
 
     private fun takePhoto() {
@@ -328,15 +337,22 @@ class CameraActivity : AppCompatActivity(), CameraNavigator {
             object : ImageCapture.OnImageSavedCallback {
                 override fun onError(exc: ImageCaptureException) {
                     val msg = "Photo capture failed: ${exc.message}"
-                    showToast(msg)
+                    requireActivity().showToast(msg)
                     Log.e(TAG, msg, exc)
                 }
 
                 override fun onImageSaved(output: ImageCapture.OutputFileResults) {
                     val savedUri = Uri.fromFile(photoFile)
                     val msg = "Photo capture succeeded: $savedUri"
-                    showToast(msg)
+                    requireActivity().showToast(msg)
                     Log.d(TAG, msg)
+                    val data = mViewModel.savePhoto(savedUri.toString())
+                    Navigation.findNavController(requireActivity(), R.id.fragment_container)
+                        .navigate(
+                            CameraFragmentDirections.actionCameraToPreview(
+                                data
+                            )
+                        )
                 }
             })
     }
@@ -359,13 +375,20 @@ class CameraActivity : AppCompatActivity(), CameraNavigator {
                 override fun onVideoSaved(file: File) {
                     val savedUri = Uri.fromFile(file)
                     val msg = "Video capture succeeded: $savedUri"
-                    showToast(msg)
+                    requireActivity().showToast(msg)
                     Log.d(TAG, msg)
+                    val data = mViewModel.saveVideo(savedUri.path.orEmpty())
+                    Navigation.findNavController(requireActivity(), R.id.fragment_container)
+                        .navigate(
+                            CameraFragmentDirections.actionCameraToPreview(
+                                data
+                            )
+                        )
                 }
 
                 override fun onError(videoCaptureError: Int, message: String, cause: Throwable?) {
                     val msg = "Video capture failed: ${cause?.message}"
-                    showToast(msg)
+                    requireActivity().showToast(msg)
                     Log.e(TAG, msg, cause)
                 }
             })
@@ -391,12 +414,10 @@ class CameraActivity : AppCompatActivity(), CameraNavigator {
         flashToggle.visibility = View.INVISIBLE
         rotateCamera.visibility = View.INVISIBLE
         tipText.visibility = View.INVISIBLE
-        enableToolbarIcon(false)
         mAnimationHelper.startBlinkAnimation(dot_text)
     }
 
     private fun recordingStop() {
-        enableToolbarIcon(true)
         flashToggle.visibility = View.VISIBLE
         capture.visibility = View.VISIBLE
         rotateCamera.visibility = View.VISIBLE
@@ -405,62 +426,14 @@ class CameraActivity : AppCompatActivity(), CameraNavigator {
         dot_text.clearAnimation()
     }
 
-    private fun enableToolbarIcon(enable: Boolean) {
-        supportActionBar?.setDisplayHomeAsUpEnabled(enable)
-    }
-
-    private fun allPermissionsGranted() = REQUIRED_PERMISSIONS.all {
-        ContextCompat.checkSelfPermission(baseContext, it) == PackageManager.PERMISSION_GRANTED
-    }
-
-    private fun getOutputDirectory(): File {
-        val mediaDir = externalMediaDirs.firstOrNull()?.let {
-            File(it, resources.getString(R.string.app_name)).apply { mkdirs() }
-        }
-        return if (mediaDir != null && mediaDir.exists())
-            mediaDir else filesDir
-    }
-
-    private fun hasBackCamera(): Boolean {
-        return mCameraProvider?.hasCamera(CameraSelector.DEFAULT_BACK_CAMERA) ?: false
-    }
-
-    private fun hasFrontCamera(): Boolean {
-        return mCameraProvider?.hasCamera(CameraSelector.DEFAULT_FRONT_CAMERA) ?: false
-    }
-
-    private fun hasFlashMode(): Boolean {
-        return mCamera?.cameraInfo?.hasFlashUnit() ?: false
-    }
-
-    private fun aspectRatio(width: Int, height: Int): Int {
-        val previewRatio = max(width, height).toDouble() / min(width, height)
-        if (abs(previewRatio - RATIO_4_3_VALUE) <= abs(previewRatio - RATIO_16_9_VALUE)) {
-            return AspectRatio.RATIO_4_3
-        }
-        return AspectRatio.RATIO_16_9
-    }
-
     companion object {
-        private const val TAG = "CameraActivity"
+        private const val TAG = "CameraFragment"
         private const val RATIO_4_3_VALUE = 4.0 / 3.0
         private const val RATIO_16_9_VALUE = 16.0 / 9.0
         private const val DELAY_MILLIS = 2000L
         private const val SCALE_UP = 1.5f
         private const val SCALE_DOWN = 1.0f
         private const val FILENAME_FORMAT = "yyyy-MM-dd-HH-mm-ss-SSS"
-        private const val REQUEST_CODE_PERMISSIONS = 10
-        private val REQUIRED_PERMISSIONS = arrayOf(
-            Manifest.permission.CAMERA,
-            Manifest.permission.RECORD_AUDIO,
-            Manifest.permission.READ_EXTERNAL_STORAGE,
-            Manifest.permission.WRITE_EXTERNAL_STORAGE
-        )
-
-        fun open(activity: Activity) {
-            activity.startActivity(Intent(activity, CameraActivity::class.java)).also {
-                activity.finish()
-            }
-        }
+        private const val NO_FLASH = -1111
     }
 }
