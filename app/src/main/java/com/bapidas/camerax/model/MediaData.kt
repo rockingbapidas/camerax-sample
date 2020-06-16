@@ -1,4 +1,4 @@
-package com.bapidas.camerax.ui.model
+package com.bapidas.camerax.model
 
 import java.io.Serializable
 

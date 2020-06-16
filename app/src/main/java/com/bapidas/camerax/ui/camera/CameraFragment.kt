@@ -25,6 +25,7 @@ import com.bapidas.camerax.R
 import com.bapidas.camerax.animation.AnimationHelper
 import com.bapidas.camerax.databinding.CameraFragmentBinding
 import com.bapidas.camerax.extension.showToast
+import com.bapidas.camerax.model.LuminosityAnalyzer
 import com.bapidas.camerax.ui.CameraActivity
 import com.bapidas.camerax.ui.permission.PermissionFragment
 import kotlinx.android.synthetic.main.camera_fragment.*
@@ -32,11 +33,13 @@ import java.io.File
 import java.text.SimpleDateFormat
 import java.util.*
 import java.util.concurrent.Executor
+import java.util.concurrent.ExecutorService
+import java.util.concurrent.Executors
 import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
 
-class CameraFragment: Fragment(),
+class CameraFragment : Fragment(),
     CameraNavigator {
     private val mDisplayManager by lazy {
         requireActivity().getSystemService(Context.DISPLAY_SERVICE) as DisplayManager
@@ -47,9 +50,11 @@ class CameraFragment: Fragment(),
 
     private lateinit var mOutputDirectory: File
     private lateinit var mCameraExecutor: Executor
+    private lateinit var mImageAnalyzerExecutor: ExecutorService
     private val mAnimationHelper = AnimationHelper()
     private var isTakingVideo = false
     private var mPreview: Preview? = null
+    private var mImageAnalyzer: ImageAnalysis? = null
     private var mImageCapture: ImageCapture? = null
     private var mVideoCapture: VideoCapture? = null
     private var mCamera: Camera? = null
@@ -64,6 +69,7 @@ class CameraFragment: Fragment(),
         override fun onDisplayRemoved(displayId: Int) = Unit
         override fun onDisplayChanged(displayId: Int) {
             if (displayId == mDisplayId) {
+                mImageAnalyzer?.targetRotation = camera_preview.display.rotation
                 mImageCapture?.targetRotation = camera_preview.display.rotation
                 mVideoCapture?.setTargetRotation(camera_preview.display.rotation)
             }
@@ -91,6 +97,7 @@ class CameraFragment: Fragment(),
         addListeners()
         mOutputDirectory = CameraActivity.getOutputDirectory(requireContext())
         mCameraExecutor = ContextCompat.getMainExecutor(requireActivity())
+        mImageAnalyzerExecutor = Executors.newSingleThreadExecutor()
         mDisplayManager.registerDisplayListener(mDisplayListener, null)
         camera_preview.post {
             mDisplayId = camera_preview.display.displayId
@@ -267,6 +274,16 @@ class CameraFragment: Fragment(),
             setTargetAspectRatio(screenAspectRatio)
             setTargetRotation(rotation)
         }.build()
+
+        // ImageAnalysis
+        mImageAnalyzer = ImageAnalysis.Builder().apply {
+            setTargetAspectRatio(screenAspectRatio)
+            setTargetRotation(rotation)
+        }.build().also {
+            it.setAnalyzer(mImageAnalyzerExecutor, LuminosityAnalyzer { luma ->
+                Log.d(TAG, "Average luminosity: $luma")
+            })
+        }
 
         // ImageCapture
         mImageCapture = ImageCapture.Builder().apply {

@@ -42,7 +42,7 @@
         android:label="PreviewFragment">
         <argument
             android:name="media_data"
-            app:argType="com.bapidas.camerax.ui.model.MediaData" />
+            app:argType="com.bapidas.camerax.model.MediaData" />
     </fragment>
 
 </navigation>

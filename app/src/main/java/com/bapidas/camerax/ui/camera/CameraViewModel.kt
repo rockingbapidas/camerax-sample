@@ -4,7 +4,7 @@ import android.os.Handler
 import android.os.SystemClock
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
-import com.bapidas.camerax.ui.model.MediaData
+import com.bapidas.camerax.model.MediaData
 import java.io.File
 import java.util.concurrent.TimeUnit
 

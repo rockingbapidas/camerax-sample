@@ -2,7 +2,7 @@ package com.bapidas.camerax.ui.preview
 
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
-import com.bapidas.camerax.ui.model.MediaData
+import com.bapidas.camerax.model.MediaData
 
 class PreviewViewModel : ViewModel() {
     val currentTakenMedia = MutableLiveData<MediaData>()
